@@ -32,7 +32,7 @@ def rename_file(old_name, new_name):
 
 
 
-def xlsx_to_csv(xlsx_file, csv_file, col_1, col_2, col_3):
+def xlsx_to_csv(xlsx_file, csv_file, col_1, col_2, col_3, col_4, col_5, col_6):
     # convert from xlsx to csv
     exl = pd.read_excel(xlsx_file)
     
@@ -41,11 +41,11 @@ def xlsx_to_csv(xlsx_file, csv_file, col_1, col_2, col_3):
 
 
     # Read the CSV file
-    df = pd.read_csv(csv_file)
-
+    df = pd.read_csv(csv_file, skiprows=3)
     # Extract data from the 'donor name' column
-    df.columns = [col_1, col_2, col_3]
-
+    df.columns = [col_1, col_2, col_3, col_4, col_5, col_6]
+    # df.tail(-1)
+    # df.iloc[:1]
     # Remove rows with missing data in either column.
     df = df.dropna(subset=[col_1, col_2, col_3])
 
@@ -54,7 +54,9 @@ def xlsx_to_csv(xlsx_file, csv_file, col_1, col_2, col_3):
     # Extract data from the 'donor amount' column
     amount_data = df[col_2].tolist()
 
-    return name_data, amount_data
+    add_amount = df[col_6].tolist()
+
+    return name_data, amount_data, add_amount
 
 
 def convert_doc_txt(docx_file, txt_file):
@@ -65,7 +67,7 @@ def convert_doc_txt(docx_file, txt_file):
 
 def replace_words(name, amount):
     # Read the text file
-    with open('template.txt', 'r') as file:
+    with open('amount.txt', 'r') as file:
         content = file.read()
 
     # Replace the "donor name" and "donor amount" with your desired text
@@ -80,15 +82,26 @@ def replace_words(name, amount):
     print(f'Text successfully replaced and saved to {new_filename}!')
 
 
-
-def replace_content_after_date(docx_filename, txt_filename, output_filename):
+def replace_words_from_no_amount(name):
+    with open("no_amount_template.txt", "r") as file:
+        content = file.read()
+        content_modified = content.replace("<Friends>", name)
+    new_filename = f'{name}.txt'
+    with open(new_filename, "w") as new_file:
+        new_file.write(content_modified)
+    
+def replace_content_after_date(docx_filename, txt_filename, output_filename, add):
     # Read the content from the text file
     with open(txt_filename, 'r', encoding='utf-8') as txt_file:
         new_content = txt_file.read()
 
+        
     # Open the existing .docx file
     doc = Document(docx_filename)
     
+    print(add)
+    if add == True:
+        doc.save(output_filename)
     # Flag to indicate when to start replacing content
     start_replacing = False
     
@@ -124,30 +137,80 @@ def replace_words_in_docx(docx_filename, replacements):
 
     print(f"Words replaced and saved in {output_filename}")
 
+def replace_by_add_amount_flag(csvfile):
+    names_arr, amount_arr, add_amount_arr = read_csv(csvfile)
+    for index, value in enumerate(add_amount_arr):
+        # print(index, value)
+        name = name_arr[index]
+        print(name)
+        if value == "True":
+            name = names_arr[index]
+            print(name)
+            # print(names_arr)
+            # print(name, index)
+            # doc = Document(name)
+            docx_file = f'{name}.docx'
+            text_file = f'{name}.txt'
+            replace_words_from_no_amount(name)
+            replace_content_after_date(docx_file, text_file, docx_file, value)
+# def replace_by_add_amount_flag(csvfile):
+#     names_arr, amount_arr, add_amount_arr = read_csv(csvfile)
+#     for index, value in enumerate(add_amount_arr):
+#         print(index, value)
+#         if value == "True":
+#             name = names_arr[index]
+#             # print(names_arr)
+#             # print(name, index)
+#             # doc = Document(name)
+#             docx_file = f'{name}.docx'
+#             text_file = f'{name}.txt'
+#             replace_words_from_no_amount(name)
+#             replace_content_after_date(docx_file, text_file, docx_file, value)
+
 def read_csv(filename):
     names = []
     amounts = []
+    add_amounts = []
 
     with open(filename, mode='r', newline='', encoding='utf-8') as file:
         reader = csv.DictReader(file)
         
         # Check if the headers 'Donor Name' and 'Donor Amount' exist in the CSV file
-        if 'Donor Name' in reader.fieldnames and 'Donor Amount' in reader.fieldnames:
+        if 'Donor Name' in reader.fieldnames and 'Donor Amount' in reader.fieldnames and 'Add Amount' in reader.fieldnames:
             for row in reader:
                 name = row['Donor Name'].strip()
                 amount_str = row['Donor Amount'].strip()
-                
+                add_amount = row['Add Amount'].strip()
+                # print(add_amount)
                 # Handle missing or empty amount values
                 if amount_str:
                     amounts.append(amount_str)
                 else:
                     amounts.append("0")
                 
+                add_amounts.append(add_amount)
                 names.append(name)
         else:
             print("CSV file does not contain the expected column headers.")
 
-    return names, amounts
+    return names, amounts, add_amounts
+
+
+
+def extract_all_donor_name(csvfile):
+    names = []
+    with open(csvfile, mode='r' ,newline='', encoding='utf-8') as file:
+        reader = csv.DictReader(file)
+        if "Donor Name" in reader.fieldnames:
+            for row in reader:
+                name = row['Donor Name'].strip()
+                names.append(name)
+        else:
+            print("CSV file does not contain the expected column headers.")
+
+    return names
+
+
 
 def move_docx_files_to_thank_you_folder(source_folder, destination_folder):
     # Ensure the "Thank you" folder exists; create it if it doesn't
@@ -161,7 +224,9 @@ def move_docx_files_to_thank_you_folder(source_folder, destination_folder):
         # Check if the file is a .docx file
         if filename.endswith(".docx"):
             destination_path = os.path.join(destination_folder, filename)
-            if filename == "template.docx":
+            if filename == "no_amount_template.docx":
+                continue
+            if filename == "amount_template.docx":
                 continue
 
 
@@ -169,18 +234,90 @@ def move_docx_files_to_thank_you_folder(source_folder, destination_folder):
             shutil.move(source_path, destination_path)
             print(f'Moved {filename} to {destination_folder}')
     
+
+def modify_selected_files(csvfile):
+    # for filename in os.listdir(destination_folder):
+    #     source_path = os.path.join(destination_folder, filename)
+
+    #     # Check if the file is a .docx file
+    #     if filename.endswith(".docx"):
+    #         destination_path = os.path.join(destination_folder, filename)
+    #         if filename == "no_amount_template.docx":
+    replacements ={
+        
+    }
+    names = extract_all_donor_name(csvfile)
+    
+    date_string = "27th September 2023"
+    for name in names:
+        filename = f'{name}.docx'
+        txt_filename = f'{name}.txt'
+        # doc = open_docx_file("./", filename)
+        replace_words_from_no_amount(name)
+        # replace_words_in_docx(filename)
+        replace_contents_after_date(filename, txt_filename, filename, date_string )
+        # replace_content_after_date(filename, txt_filename, filename, True )
+        # doc.save(filename)
+
+
+def replace_contents_after_date(docx_file_path, txt_file_path, output_docx_file_path, date_string):
+    # Load the original DOCX file
+    doc = Document(docx_file_path)
+    with open(txt_file_path, "r", encoding="utf-8") as txt_file:
+        sample_text = txt_file.read()
+    # Parse the date from the provided string
+    # date_format = "%d %B %Y"  # Format: "27th September 2023"
+    # target_date = datetime.strptime(date_string, date_format)
+
+    # Iterate through paragraphs and tables in the document
+    for paragraph in doc.paragraphs:
+        if "27th September 2023" in paragraph.text:
+            # Replace the content starting from this paragraph
+            paragraph.text = paragraph.text.replace("27th September 2023", date_string)
+            paragraph.add_run(sample_text)
+        # if target_date <= datetime.now():
+        #     paragraph.clear()
+        #     continue
+        break
+
+    # Load the sample text from the TXT file
+   
+
+    # Add the sample text to the document
+    doc.add_paragraph(sample_text)
+
+    # Save the updated document to a new file
+    doc.save(output_docx_file_path)
+
+def open_docx_file(folder_path, file_name):
+    # Construct the full path to the file
+    file_path = os.path.join(folder_path, file_name)
+
+    # Check if the file exists
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"The file '{file_name}' does not exist in the folder '{folder_path}'")
+
+    # Open the .docx file using the python-docx library
+    doc = Document(file_path)
+
+    return doc
+
+
+
+
 def clean_csv_data(input_csv_path, output_csv_path):
     # Read the CSV file into a pandas DataFrame, skipping empty lines and header rows.
-    df = pd.read_csv(input_csv_path, skip_blank_lines=True, header=None, names=["Donor Name", "Donor Amount"])
-
+    df = pd.read_csv(input_csv_path, skiprows=2) #names=["Donor Name", "Donor Amount", "Add Amount"])
+    columns_to_keep = ['Donor Name', 'Donor Amount', 'Add Amount']
+    df = df[columns_to_keep]
     # Remove rows with missing Donor Name or Donor Amount.
-    df = df.dropna(subset=["Donor Name", "Donor Amount"], how="any")
+    # df = df.dropna(subset=["Donor Name", "Donor Amount", "Add Amount"], how="any")
 
     # Remove rows with "Unnamed: 1" in the "Donor Name" column.
-    df = df[df["Donor Name"] != "Unnamed: 1"]
+    # df = df[df["Donor Name"] != "Unnamed: 1"]
 
-    # Remove rows with "Unnamed: 2" in the "Donor Amount" column.
-    df = df[df["Donor Amount"] != "Unnamed: 2"]
+    # # Remove rows with "Unnamed: 2" in the "Donor Amount" column.
+    # df = df[df["Donor Amount"] != "Unnamed: 2"]
 
     # Remove duplicate entries in "Donor Name" and "Donor Amount" columns.
     # df = df.drop_duplicates(subset=["Donor Name", "Donor Amount"])/
@@ -190,22 +327,42 @@ def clean_csv_data(input_csv_path, output_csv_path):
     # df["Donor Name"] = df["Donor Name"].str.strip()
     # df["Donor Amount"] = df["Donor Amount"].str.strip()
     # df = df[~df.duplicated(subset=["Donor Name", "Donor Amount"], keep="first")]
-    def clean_and_normalize(s):
-        s = re.sub(r'[^a-zA-Z0-9\s]', '', s)  # Remove special characters
-        s = s.strip()  # Trim leading/trailing whitespace
-        return s
+    # def clean_and_normalize(s):
+    #     s = re.sub(r'[^a-zA-Z0-9\s]', '', s)  # Remove special characters
+    #     s = s.strip()  # Trim leading/trailing whitespace
+    #     return s
 
     # Clean and normalize "Donor Name" and "Donor Amount" columns.
-    df["Donor Name"] = df["Donor Name"].apply(clean_and_normalize)
-    df["Donor Amount"] = df["Donor Amount"].apply(clean_and_normalize)
+    # df["Donor Name"] = df["Donor Name"].apply(clean_and_normalize)
+    # df["Donor Amount"] = df["Donor Amount"].apply(clean_and_normalize)
 
     # Remove rows where both "Donor Name" and "Donor Amount" are duplicates.
-    df = df[~df.duplicated(subset=["Donor Name", "Donor Amount"], keep="first")]
+    # df = df[~df.duplicated(subset=["Donor Name", "Donor Amount"], keep="first")]
 
 
     # Save the cleaned data to a new CSV file.
     df.to_csv(output_csv_path, index=False)
 
+
+def new_xlsx_to_csv(csvfile):
+    # Read the CSV file into a DataFrame
+    df = pd.read_csv(csvfile, skiprows=3)
+    header_index = df.index[df.apply(lambda row: row.astype(str).str.contains(',').any(), axis=1)].min()
+
+# # If a header row with commas is found, keep the rows from that point onward
+    
+#     # Filter rows where the 'Country' column is 'UK' or 'NG'
+    df = df[df['Country'].isin(['UK', 'NG'])]
+
+#     # Keep only the desired columns
+    df = df[['Receievd from', 'Amount', 'Add Amount']]
+    if not pd.isna(header_index):
+        cleaned_df = df.iloc[header_index:]
+    else:
+        cleaned_df = df  # If no header row found, k
+    # # Print the cleaned DataFrame
+    # print(cleaned_df)
+    cleaned_df.to_csv(csvfile, index=False)
 
 def delete_all_txt_files(directory_path):
     try:
@@ -228,7 +385,7 @@ def delete_all_txt_files(directory_path):
         print(f"Deleted {len(txt_files)} TXT files.")
     except Exception as e:
         print(f"An error occurred: {e}")
-
+    
 
 
 
@@ -252,18 +409,20 @@ async def upload_files(docx_file: UploadFile = File(...), xlsx_file: UploadFile 
         #     os.makedirs("uploads")
 
         # Save the uploaded DOCX file
-        docx_file_path = os.path.join("./", "template.docx")
+        docx_file_path = os.path.join("./", "amount_template.docx")
         with open(docx_file_path, "wb") as f:
             f.write(docx_file.file.read())
+       
 
         # Save the uploaded XLSX file
         xlsx_file_path = os.path.join("./", "donations.xlsx")
         with open(xlsx_file_path, "wb") as f:
             f.write(xlsx_file.file.read())
-        name_arr, amount_arr = xlsx_to_csv("donations.xlsx", "donations.csv","Donor Name", "Donor Amount", "")
+        _,_, add_amount = xlsx_to_csv("donations.xlsx", "donations.csv","Donor Name", "Donor Amount", "","","","Add Amount")
+
         clean_csv_data("donations.csv", "donations.csv")
-        convert_doc_txt("template.docx", "template.txt")
-    
+        convert_doc_txt("amount_template.docx", "amount.txt")
+        convert_doc_txt("no_amount_template.docx", "no_amount_template.txt")
 
 
 
@@ -271,32 +430,33 @@ async def upload_files(docx_file: UploadFile = File(...), xlsx_file: UploadFile 
         names, amounts = read_csv(filename)
 
         # # # # Print the names and amounts
-        for name, amount in zip(names, amounts):
-                text_file = name+".txt"
-                docx_folder = "completed/"+ name + "." + "docx"
-                docx_file = name + ".docx"
-                cleaned_amount = amount.replace('₦', '').replace(',', '')
-        
-                try:
-                    amount = int(cleaned_amount)
-                except ValueError:
-                    # Handle invalid amount value here
-                    print(f"Invalid amount value for {name}: {amount}")
-                    continue
+        for name, amount, add_amount in zip(names, amounts, add_amount):
+            text_file = name+".txt"
+            docx_folder = "completed/"+ name + "." + "docx"
+            docx_file = name + ".docx"
+            cleaned_amount = amount.replace('₦', '').replace(',', '')
+    
+            try:
+                amount = int(cleaned_amount)
+            except ValueError:
+                # Handle invalid amount value here
+                print(f"Invalid amount value for {name}: {amount}")
+                continue
 
-                # Format the amount with commas
-                formatted_amount = '{:,.0f}'.format(amount)
+            # Format the amount with commas
+            formatted_amount = '{:,.0f}'.format(amount)
 
-                # formatted_amount = '{:,}'.format(int(amount))
-                replacements = {
-                    "Donor Name": name ,
-                    "Donor Amount": formatted_amount}
-                replace_words(name, str(amount))
-                replace_content_after_date("template.docx", text_file, docx_file)
-                replace_words_in_docx(docx_file, replacements)
-        
+            # formatted_amount = '{:,}'.format(int(amount))
+            replacements = {
+                "Donor Name": name ,
+                "Donor Amount": formatted_amount}
+            replace_words(name, str(amount))
+            replace_content_after_date("amount_template.docx", text_file, docx_file, "")
+            replace_words_in_docx(docx_file, replacements)
+          
         move_docx_files_to_thank_you_folder(".", "completed")
-        delete_all_txt_files(".")
+        # modify_selected_files("filtered_names.csv")
+        # delete_all_txt_files(".")
 
         return JSONResponse(content={
             "message": "Files uploaded successfully and modified",
@@ -305,6 +465,21 @@ async def upload_files(docx_file: UploadFile = File(...), xlsx_file: UploadFile 
     except Exception as e:
          return JSONResponse(content={"error": str(e)}, status_code=500)
 
+@app.post("/upload/add_amount")
+async def upload_add_amount(no_docx_file: UploadFile = File(...), xlsx_file: UploadFile= File(...)):
+     try:
+         docx_file_path = os.path.join("./", "no_amount_template.docx")
+         with open(docx_file_path, "wb") as f:
+            f.write(no_docx_file.file.read())
+    
+         replace_by_add_amount_flag("donations.csv")
+         delete_all_txt_files(".")
+         return JSONResponse(content={
+        "message": "Files uploaded successfully and modified",
+        "download_link": "https://doc-bot-service.onrender.com/download/completed"
+        }, status_code=200)
+     except Exception as e:
+         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 @app.get("/download/{folder_name}")
 async def download_folder(folder_name: str):
@@ -333,50 +508,79 @@ async def download_folder(folder_name: str):
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+def store_add_amount_users(csvfile):
+   with open(csvfile, mode='r') as csv_file:
+    csv_reader = csv.DictReader(csv_file)
+    
+    # Create a list to store rows that match the condition
+    filtered_rows = []
+    
+    # Loop through each row in the original CSV
+    for row in csv_reader:
+        if row['Add Amount'] == 'True':
+            # Append the row to the list
+            filtered_rows.append(row)
 
-
-
+# Create a new CSV file for storing names with "Add Amount" equal to "True"
+    with open('filtered_names.csv', mode='w', newline='') as filtered_csv_file:
+        fieldnames = ['Donor Name', 'Donor Amount', 'Add Amount']
+        writer = csv.DictWriter(filtered_csv_file, fieldnames=fieldnames)
+        writer.writeheader()
+        
+        # Write the filtered rows to the new CSV file
+        writer.writerows(filtered_rows)
 # if __name__ == "__main__":
-#     name_arr, amount_arr = xlsx_to_csv("Donations.xlsx", "donations.csv","Donor Name", "Donor Amount", "")
-#     clean_csv_data("donations.csv", "donations.csv")
-#     convert_doc_txt("template.docx", "template.txt")
+#     import uvicorn
+#     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+
+
+if __name__ == "__main__":
+    name_arr, amount_arr, add_amount = xlsx_to_csv("donations.xlsx", "donations.csv","Donor Name", "Donor Amount", "","","","Add Amount")
+
+    clean_csv_data("donations.csv", "donations.csv")
+    convert_doc_txt("amount_template.docx", "amount.txt")
+    convert_doc_txt("no_amount_template.docx", "no_amount_template.txt")
+    store_add_amount_users("donations.csv")
+    # new_xlsx_to_csv("donations.csv")
     
 
 
 
-#     filename = 'donations.csv'  # Replace with your CSV file's name
-#     names, amounts = read_csv(filename)
+    filename = 'donations.csv'  # Replace with your CSV file's name
+    names, amounts, add_amounts = read_csv(filename)
+    # print(add_amount)
 
 #     # # # # Print the names and amounts
-#     for name, amount in zip(names, amounts):
-#             text_file = name+".txt"
-#             docx_folder = "Thank You/"+ name + "." + "docx"
-#             docx_file = name + ".docx"
-#             cleaned_amount = amount.replace('₦', '').replace(',', '')
+    for name, amount, add_amount in zip(names, amounts, add_amount):
+            text_file = name+".txt"
+            docx_folder = "completed/"+ name + "." + "docx"
+            docx_file = name + ".docx"
+            cleaned_amount = amount.replace('₦', '').replace(',', '')
     
-#             try:
-#                 amount = int(cleaned_amount)
-#             except ValueError:
-#                 # Handle invalid amount value here
-#                 print(f"Invalid amount value for {name}: {amount}")
-#                 continue
+            try:
+                amount = int(cleaned_amount)
+            except ValueError:
+                # Handle invalid amount value here
+                print(f"Invalid amount value for {name}: {amount}")
+                continue
 
-#             # Format the amount with commas
-#             formatted_amount = '{:,.0f}'.format(amount)
+            # Format the amount with commas
+            formatted_amount = '{:,.0f}'.format(amount)
 
-#             # formatted_amount = '{:,}'.format(int(amount))
-#             replacements = {
-#                 "Donor Name": name ,
-#                 "Donor Amount": formatted_amount}
-#             replace_words(name, str(amount))
-#             replace_content_after_date("template.docx", text_file, docx_file)
-#             replace_words_in_docx(docx_file, replacements)
-    
-#     move_docx_files_to_thank_you_folder(".", "Thank You")
-#     delete_all_txt_files(".")
+            # formatted_amount = '{:,}'.format(int(amount))
+            replacements = {
+                "Donor Name": name ,
+                "Donor Amount": formatted_amount}
+            replace_words(name, str(amount))
+            replace_content_after_date("amount_template.docx", text_file, docx_file, "")
+            replace_words_in_docx(docx_file, replacements)
+            # replace_by_add_amount_flag(filename)
+    modify_selected_files("filtered_names.csv") 
+    move_docx_files_to_thank_you_folder(".", "completed")
+    # doc = open_docx_file("completed","Laolu Akerele.docx")
+    # print(doc)
+    # delete_all_txt_files(".")
 #     # replace_content_after_date("thank.docx", "Dejo Ajani.txt", "Dejo Ajani.docx")
 # # if __name__ == "__main__":
 # #     name_arr, amount_arr = xlsx_to_csv("Donations.xlsx", "donations.csv", "Donor Name", "Donor Amount")
